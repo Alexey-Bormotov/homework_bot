@@ -41,11 +41,6 @@ s_handler.setLevel(logging.DEBUG)
 s_handler.setFormatter(formatter)
 logger.addHandler(s_handler)
 
-t_handler = TelegramHandler(TELEGRAM_TOKEN, TELEGRAM_CHAT_ID)
-t_handler.setLevel(logging.DEBUG)
-t_handler.setFormatter(formatter)
-logger.addHandler(t_handler)
-
 
 RETRY_TIME = 60 * 10
 ENDPOINT = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
@@ -202,6 +197,10 @@ def main():
 
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     logger.info('Связь с ботом установлена.')
+    t_handler = TelegramHandler(bot, TELEGRAM_CHAT_ID)
+    t_handler.setLevel(logging.DEBUG)
+    t_handler.setFormatter(formatter)
+    logger.addHandler(t_handler)
 
     current_timestamp = int(time.time())
     previous_message = None
