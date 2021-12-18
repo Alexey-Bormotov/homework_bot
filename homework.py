@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import requests
@@ -9,10 +10,12 @@ from dotenv import load_dotenv
 from logging.handlers import RotatingFileHandler
 from logging import StreamHandler
 
-from exceptions import (HTTPConnectionException,
-                        JSONConvertException,
-                        JSONContentException,
-                        ParsingException)
+from exceptions import (HTTPConnectionError,
+                        JSONConvertError,
+                        JSONContentError,
+                        ParsingError)
+
+from telegram_handler import TelegramHandler
 
 load_dotenv()
 PRACTICUM_TOKEN = os.getenv('PRACTICUM_TOKEN')
@@ -26,7 +29,7 @@ logger.setLevel(logging.DEBUG)
 
 rf_handler = RotatingFileHandler(
     'homework_bot.log',
-    maxBytes=50000,
+    maxBytes=50_000,
     backupCount=1
 )
 rf_handler.setLevel(logging.DEBUG)
@@ -38,8 +41,13 @@ s_handler.setLevel(logging.DEBUG)
 s_handler.setFormatter(formatter)
 logger.addHandler(s_handler)
 
+t_handler = TelegramHandler(TELEGRAM_TOKEN, TELEGRAM_CHAT_ID)
+t_handler.setLevel(logging.DEBUG)
+t_handler.setFormatter(formatter)
+logger.addHandler(t_handler)
 
-RETRY_TIME = 600
+
+RETRY_TIME = 60 * 10
 ENDPOINT = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
 HEADERS = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
 
@@ -72,25 +80,23 @@ def get_api_answer(current_timestamp):
 
     try:
         response = requests.get(ENDPOINT, headers=HEADERS, params=params)
-    except Exception:
+    except ConnectionError:
         logger.error('Не удалось получить ответ от API.')
-        raise HTTPConnectionException('Не удалось получить ответ от API.')
+        raise HTTPConnectionError('Не удалось получить ответ от API.')
     else:
         logger.info('Ответ от API получен.')
 
-    # response.raise_for_status() - не проходит pytest для домашки,
-    # может не так его применяю?! оставил пока проверку по коду 200
     if response.status_code != 200:
-        logger.error('Ответ от API неверный.')
-        raise HTTPConnectionException('Ответ от API неверный.')
+        logger.error('Не удалось получить ответ от API.')
+        raise HTTPConnectionError('Не удалось получить ответ от API.')
 
     try:
         response = response.json()
-    except AttributeError:
+    except json.decoder.JSONDecodeError:
         logger.error(
-            'Не удалось преобразовать ответ в JSON.'
+            'Не удалось преобразовать ответ от API в JSON.'
         )
-        raise JSONConvertException(
+        raise JSONConvertError(
             'Не удалось преобразовать ответ от API в JSON.'
         )
     else:
@@ -108,20 +114,20 @@ def check_response(response):
             logger.error(
                 'Не удалось получить домашки из ответа от API.'
             )
-            raise JSONContentException(
+            raise JSONContentError(
                 'Не удалось получить домашки из ответа от API.'
             )
         else:
             logger.info('Список домашек в ответе от API получен.')
     else:
         logger.error('В ответе от API нет списка домашек.')
-        raise JSONContentException(
+        raise JSONContentError(
             'В ответе от API нет списка домашек.'
         )
 
-    if homeworks != [] and not isinstance(homeworks[0], dict):
+    if homeworks and not isinstance(homeworks[0], dict):
         logger.error('Содержимое списка домашек некорректно.')
-        raise JSONContentException(
+        raise JSONContentError(
             'Содержимое списка домашек некорректно.'
         )
 
@@ -133,11 +139,11 @@ def parse_status(homework):
     try:
         homework_name = homework['homework_name']
         homework_status = homework['status']
-    except TypeError:  # Почему то pytest в этом месте ругается на KeyError! =о
+    except TypeError:
         logger.error(
             'Не удалось получить имя и/или статус домашки.'
         )
-        raise ParsingException(
+        raise ParsingError(
             'Не удалось получить имя и/или статус домашки.'
         )
     else:
@@ -147,7 +153,7 @@ def parse_status(homework):
         verdict = HOMEWORK_STATUSES[homework_status]
     except KeyError:
         logger.error('Статус домашней работы не удалось распознать.')
-        raise ParsingException(
+        raise ParsingError(
             'Статус домашней работы не удалось распознать.'
         )
     else:
@@ -174,8 +180,6 @@ def check_tokens():
     return True
 
 
-# Пришлось написать отдельную функцию для проверки ошибок
-# т.к. flake8 ругался, что main() получилась слишком сложная
 def error_processing(bot, current_error, previous_error):
     """Обработка ошибок и отправка сообщения об ошибке в Telegram."""
     if current_error != previous_error:
@@ -200,17 +204,17 @@ def main():
     logger.info('Связь с ботом установлена.')
 
     current_timestamp = int(time.time())
-    previous_message = ''
-    previous_error = ''
+    previous_message = None
+    previous_error = None
 
     while True:
         try:
             response = get_api_answer(current_timestamp)
             homeworks = check_response(response)
 
-            try:
+            if homeworks:
                 message = parse_status(homeworks[0])
-            except IndexError:
+            else:
                 message = 'Обновлений по домашке нет.'
                 logger.debug('Обновлений по домашке нет.')
 
@@ -233,7 +237,9 @@ def main():
                 logger.info('Время запроса получено из ответа от API.')
 
             time.sleep(RETRY_TIME)
-            logger.info('--- Новый запрос ------------->>>')
+            logger.debug(
+                'Программа работает. Предыдущий запрос был выполнен успешно.'
+            )
 
         except Exception as error:
             current_error = f'Сбой в работе программы: "{error}"'
@@ -242,12 +248,9 @@ def main():
             )
 
             time.sleep(RETRY_TIME)
-            logger.info('--- Новый запрос ------------->>>')
 
-        else:
-            logger.debug(
-                'Программа работает. Предыдущий запрос был выполнен успешно.'
-            )
+        finally:
+            logger.info('--- Новый запрос ------------->>>')
 
 
 if __name__ == '__main__':

@@ -1,15 +1,18 @@
-class HTTPConnectionException(Exception):
+class HTTPConnectionError(Exception):
     """Ошибка подключения к API."""
     pass
 
-class JSONConvertException(Exception):
+
+class JSONConvertError(Exception):
     """Ошибка преобразования ответа от API в JSON."""
     pass
 
-class JSONContentException(Exception):
+
+class JSONContentError(Exception):
     """Ошибка в содержимом JSON'а."""
     pass
 
-class ParsingException(Exception):
+
+class ParsingError(Exception):
     """Ошибка при распознавании данных."""
     pass
