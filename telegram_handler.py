@@ -1,11 +1,11 @@
-from logging import StreamHandler
+from logging import Handler
 
 import telegram
 
 
-class TelegramHandler(StreamHandler):
+class TelegramHandler(Handler):
     def __init__(self, token, chat_id):
-        StreamHandler.__init__(self)
+        Handler.__init__(self)
         self.token = token
         self.chat_id = chat_id
         self.bot = telegram.Bot(token=self.token)
