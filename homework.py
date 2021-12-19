@@ -75,7 +75,7 @@ def get_api_answer(current_timestamp):
 
     try:
         response = requests.get(ENDPOINT, headers=HEADERS, params=params)
-    except ConnectionError:
+    except requests.RequestException:
         logger.error('Не удалось получить ответ от API.')
         raise HTTPConnectionError('Не удалось получить ответ от API.')
     else:
@@ -102,23 +102,17 @@ def get_api_answer(current_timestamp):
 
 def check_response(response):
     """Проверка запроса к API на корректность и извлечение списка домашек."""
-    if isinstance(response['homeworks'], list):
-        try:
-            homeworks = response['homeworks']
-        except TypeError:
-            logger.error(
-                'Не удалось получить домашки из ответа от API.'
-            )
-            raise JSONContentError(
-                'Не удалось получить домашки из ответа от API.'
-            )
-        else:
-            logger.info('Список домашек в ответе от API получен.')
-    else:
+    if not isinstance(response['homeworks'], list):
         logger.error('В ответе от API нет списка домашек.')
-        raise JSONContentError(
-            'В ответе от API нет списка домашек.'
-        )
+        raise JSONContentError('В ответе от API нет списка домашек.')
+
+    try:
+        homeworks = response['homeworks']
+    except TypeError:
+        logger.error('Не удалось получить домашки из ответа от API.')
+        raise JSONContentError('Не удалось получить домашки из ответа от API.')
+    else:
+        logger.info('Список домашек в ответе от API получен.')
 
     if homeworks and not isinstance(homeworks[0], dict):
         logger.error('Содержимое списка домашек некорректно.')
@@ -175,10 +169,9 @@ def check_tokens():
     return True
 
 
-def error_processing(bot, current_error, previous_error):
-    """Обработка ошибок и отправка сообщения об ошибке в Telegram."""
-    if current_error != previous_error:
-        send_message(bot, current_error)
+def error_processing(current_error, previous_error):
+    """Обработка ошибок."""
+    if current_error != previous_error:  # Не совсем понял, куда это двинуть)
         logger.error(current_error)
     else:
         logger.error(
@@ -195,16 +188,16 @@ def main():
     if not check_tokens():
         exit()
 
-    bot = telegram.Bot(token=TELEGRAM_TOKEN)
-    logger.info('Связь с ботом установлена.')
-    t_handler = TelegramHandler(bot, TELEGRAM_CHAT_ID)
-    t_handler.setLevel(logging.DEBUG)
-    t_handler.setFormatter(formatter)
-    logger.addHandler(t_handler)
-
     current_timestamp = int(time.time())
     previous_message = None
     previous_error = None
+
+    bot = telegram.Bot(token=TELEGRAM_TOKEN)
+    logger.info('Связь с ботом установлена.')
+    t_handler = TelegramHandler(bot, TELEGRAM_CHAT_ID)
+    t_handler.setLevel(logging.ERROR)
+    t_handler.setFormatter(formatter)
+    logger.addHandler(t_handler)
 
     while True:
         try:
@@ -242,10 +235,7 @@ def main():
 
         except Exception as error:
             current_error = f'Сбой в работе программы: "{error}"'
-            previous_error = error_processing(
-                bot, current_error, previous_error
-            )
-
+            previous_error = error_processing(current_error, previous_error)
             time.sleep(RETRY_TIME)
 
         finally:

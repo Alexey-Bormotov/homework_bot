@@ -3,7 +3,7 @@ from logging import Handler
 
 class TelegramHandler(Handler):
     def __init__(self, bot, chat_id):
-        Handler.__init__(self)
+        super().__init__()
         self.bot = bot
         self.chat_id = chat_id
 
