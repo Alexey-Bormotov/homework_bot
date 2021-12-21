@@ -76,24 +76,17 @@ def get_api_answer(current_timestamp):
     try:
         response = requests.get(ENDPOINT, headers=HEADERS, params=params)
     except requests.RequestException:
-        logger.error('Не удалось получить ответ от API.')
         raise HTTPConnectionError('Не удалось получить ответ от API.')
     else:
         logger.info('Ответ от API получен.')
 
     if response.status_code != 200:
-        logger.error('Не удалось получить ответ от API.')
-        raise HTTPConnectionError('Не удалось получить ответ от API.')
+        raise HTTPConnectionError('Ответ от API не верный.')
 
     try:
         response = response.json()
     except json.decoder.JSONDecodeError:
-        logger.error(
-            'Не удалось преобразовать ответ от API в JSON.'
-        )
-        raise JSONConvertError(
-            'Не удалось преобразовать ответ от API в JSON.'
-        )
+        raise JSONConvertError('Не удалось преобразовать ответ от API в JSON.')
     else:
         logger.info('Ответ от API преобразован в JSON.')
 
@@ -109,16 +102,12 @@ def check_response(response):
     try:
         homeworks = response['homeworks']
     except TypeError:
-        logger.error('Не удалось получить домашки из ответа от API.')
         raise JSONContentError('Не удалось получить домашки из ответа от API.')
     else:
         logger.info('Список домашек в ответе от API получен.')
 
     if homeworks and not isinstance(homeworks[0], dict):
-        logger.error('Содержимое списка домашек некорректно.')
-        raise JSONContentError(
-            'Содержимое списка домашек некорректно.'
-        )
+        raise JSONContentError('Содержимое списка домашек некорректно.')
 
     return homeworks
 
@@ -129,22 +118,14 @@ def parse_status(homework):
         homework_name = homework['homework_name']
         homework_status = homework['status']
     except TypeError:
-        logger.error(
-            'Не удалось получить имя и/или статус домашки.'
-        )
-        raise ParsingError(
-            'Не удалось получить имя и/или статус домашки.'
-        )
+        raise ParsingError('Не удалось получить имя и/или статус домашки.')
     else:
         logger.info('Имя и статус домашки получены.')
 
     try:
         verdict = HOMEWORK_STATUSES[homework_status]
     except KeyError:
-        logger.error('Статус домашней работы не удалось распознать.')
-        raise ParsingError(
-            'Статус домашней работы не удалось распознать.'
-        )
+        raise ParsingError('Статус домашней работы не удалось распознать.')
     else:
         logger.info('Статус домашней работы распознан.')
 
@@ -169,18 +150,6 @@ def check_tokens():
     return True
 
 
-def error_processing(current_error, previous_error):
-    """Обработка ошибок."""
-    if current_error != previous_error:  # Не совсем понял, куда это двинуть)
-        logger.error(current_error)
-    else:
-        logger.error(
-            f'Программа не работает. '
-            f'{current_error} всё ещё не устранён.'
-        )
-    return current_error
-
-
 def main():
     """Основная логика работы бота."""
     logger.info('--- Старт программы ---------->>>')
@@ -190,7 +159,6 @@ def main():
 
     current_timestamp = int(time.time())
     previous_message = None
-    previous_error = None
 
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     logger.info('Связь с ботом установлена.')
@@ -235,7 +203,8 @@ def main():
 
         except Exception as error:
             current_error = f'Сбой в работе программы: "{error}"'
-            previous_error = error_processing(current_error, previous_error)
+            logger.error(current_error)
+
             time.sleep(RETRY_TIME)
 
         finally:
